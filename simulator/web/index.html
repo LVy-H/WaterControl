@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f3f5f7">
+  <title>Water distribution — simulation</title>
+  <link rel="preload" href="/fonts/plex-sans-regular.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+<header class="app-header">
+  <div class="app-identity"><h1>Water distribution</h1><span class="environment">Simulation</span></div>
+  <div class="engine-status"><span id="connection" role="status">Connecting…</span><button id="refresh" type="button" class="quiet">Refresh</button></div>
+</header>
+<main>
+  <div id="error" role="alert" hidden></div>
+  <section class="transport" aria-label="Simulation clock">
+    <div class="clock"><span>Virtual time</span><output id="time">00:00.000</output><span id="clock-status">Paused</span></div>
+    <div class="transport-actions">
+      <button id="play" class="primary" type="button" aria-pressed="false" disabled>Run clock</button>
+      <label class="speed-control">Speed <select id="speed"><option value="1">1×</option><option value="4">4×</option><option value="10">10×</option></select></label>
+      <button id="step" type="button" data-control disabled>Step 1 second</button>
+      <button id="reset" type="button" class="quiet" data-control disabled>Reset</button>
+    </div>
+  </section>
+
+  <div class="workbench">
+    <section class="network-view" aria-labelledby="network-title">
+      <div class="network-heading">
+        <h2 id="network-title">Distribution network</h2>
+        <span id="phase" class="phase">Waiting</span>
+      </div>
+      <div class="safety-line" role="status"><span id="alarm" class="status-mark">Waiting</span><span id="safety">Waiting for controller state.</span><button id="ack" type="button" data-control disabled hidden>Acknowledge alarm</button></div>
+      <div class="diagram-scroll" tabindex="0" role="region" aria-label="Water network schematic; scroll horizontally on a small screen">
+        <svg class="network-diagram" viewBox="0 0 800 460" role="img" aria-labelledby="diagram-title diagram-description">
+          <title id="diagram-title">Source reservoir and two independently controlled house branches</title>
+          <desc id="diagram-description">Pipes connect the source pump and main meter to each house valve, pump, branch meter, and tank. Blue indicates commanded operation. Flow is measured in litres per minute.</desc>
+          <defs>
+            <clipPath id="source-clip"><rect x="40" y="157" width="90" height="144" rx="3"/></clipPath>
+            <clipPath id="tank1-clip"><rect x="675" y="54" width="88" height="121" rx="3"/></clipPath>
+            <clipPath id="tank2-clip"><rect x="675" y="276" width="88" height="121" rx="3"/></clipPath>
+          </defs>
+          <g class="pipework" fill="none">
+            <path id="pipe-source" d="M130 229H400"/>
+            <path id="pipe1" d="M400 229V115H675"/>
+            <path id="pipe2" d="M400 229V337H675"/>
+          </g>
+          <circle class="junction" cx="400" cy="229" r="4"/>
+
+          <g id="source-tank" class="vessel" role="meter" aria-label="Source reservoir level" aria-valuemin="0" aria-valuemax="100">
+            <rect class="vessel-ground" x="40" y="157" width="90" height="144" rx="3"/>
+            <rect class="water" x="40" y="157" width="90" height="144" data-bottom="301" data-height="144" clip-path="url(#source-clip)"/>
+            <rect class="vessel-outline" x="40" y="157" width="90" height="144" rx="3"/>
+            <path class="vessel-ticks" d="M40 193H48M40 229H48M40 265H48"/>
+            <text id="source-tank-level" class="level-value" x="85" y="235">—</text>
+          </g>
+          <text class="node-title" x="85" y="128">Source reservoir</text>
+          <text class="node-note" x="85" y="322">20 L capacity</text>
+          <text id="source-permit" class="permit-label" x="85" y="345">Permit —</text>
+          <g id="source-pump" class="pump-symbol" aria-label="Source pump command">
+            <circle cx="215" cy="229" r="23"/><path d="M207 217L227 229L207 241Z"/><text x="215" y="275">Source pump</text>
+          </g>
+          <g class="meter-symbol"><rect x="296" y="212" width="36" height="34" rx="3"/><text x="314" y="234">F0</text></g>
+          <text id="main-flow" class="flow-value" x="314" y="180">—</text>
+          <text class="flow-unit" x="314" y="199">L/min</text>
+          <text class="node-note" x="314" y="275">Main meter</text>
+
+          <g id="valve1" class="valve-symbol" aria-label="House 1 valve command"><path d="M457 100L481 115L457 130ZM481 115L505 100V130Z"/><text x="481" y="158">Valve 1</text></g>
+          <g id="pump1" class="pump-symbol" aria-label="House 1 pump command"><circle cx="556" cy="115" r="21"/><path d="M549 104L566 115L549 126Z"/><text x="556" y="158">Pump 1</text></g>
+          <g class="meter-symbol"><rect x="611" y="100" width="32" height="30" rx="3"/><text x="627" y="120">F1</text></g>
+          <text id="flow1" class="flow-value branch-flow" x="627" y="70">—</text>
+          <text class="flow-unit" x="627" y="88">L/min</text>
+          <text class="node-title" x="719" y="29">House 1</text>
+          <g id="tank1" class="vessel" role="meter" aria-label="House 1 tank level" aria-valuemin="0" aria-valuemax="100">
+            <rect class="vessel-ground" x="675" y="54" width="88" height="121" rx="3"/>
+            <rect class="water" x="675" y="151" width="88" height="24" data-bottom="175" data-height="121" clip-path="url(#tank1-clip)"/>
+            <rect class="vessel-outline" x="675" y="54" width="88" height="121" rx="3"/>
+            <text id="tank1-level" class="level-value" x="719" y="121">—</text>
+          </g>
+          <text id="permit1" class="permit-label" x="719" y="198">Permit —</text>
+          <text id="delivered1" class="delivery-label" x="719" y="222">Delivery —</text>
+
+          <g id="valve2" class="valve-symbol" aria-label="House 2 valve command"><path d="M457 322L481 337L457 352ZM481 337L505 322V352Z"/><text x="481" y="380">Valve 2</text></g>
+          <g id="pump2" class="pump-symbol" aria-label="House 2 pump command"><circle cx="556" cy="337" r="21"/><path d="M549 326L566 337L549 348Z"/><text x="556" y="380">Pump 2</text></g>
+          <g class="meter-symbol"><rect x="611" y="322" width="32" height="30" rx="3"/><text x="627" y="342">F2</text></g>
+          <text id="flow2" class="flow-value branch-flow" x="627" y="292">—</text>
+          <text class="flow-unit" x="627" y="310">L/min</text>
+          <text class="node-title" x="719" y="251">House 2</text>
+          <g id="tank2" class="vessel" role="meter" aria-label="House 2 tank level" aria-valuemin="0" aria-valuemax="100">
+            <rect class="vessel-ground" x="675" y="276" width="88" height="121" rx="3"/>
+            <rect class="water" x="675" y="373" width="88" height="24" data-bottom="397" data-height="121" clip-path="url(#tank2-clip)"/>
+            <rect class="vessel-outline" x="675" y="276" width="88" height="121" rx="3"/>
+            <text id="tank2-level" class="level-value" x="719" y="343">—</text>
+          </g>
+          <text id="permit2" class="permit-label" x="719" y="420">Permit —</text>
+          <text id="delivered2" class="delivery-label" x="719" y="444">Delivery —</text>
+        </svg>
+      </div>
+      <div class="network-caption"><span class="diagram-legend"><i></i>Commanded on / open</span><span id="flow-valid">Waiting for a flow sample</span><span>Delivery is model truth</span><span class="pan-hint">Scroll to inspect branches</span><span id="warning" hidden>Flow anomaly pending</span></div>
+    </section>
+
+    <aside class="control-rail" aria-label="Simulation workspace">
+      <div class="workspace-tabs" role="tablist" aria-label="Workspace">
+        <button id="tab-controls" type="button" role="tab" aria-selected="true" aria-controls="controls-panel" data-tab="controls">Controls</button>
+        <button id="tab-faults" type="button" role="tab" aria-selected="false" aria-controls="faults-panel" data-tab="faults" tabindex="-1">Faults <span id="injection-count" hidden></span></button>
+        <button id="tab-scenarios" type="button" role="tab" aria-selected="false" aria-controls="scenarios-panel" data-tab="scenarios" tabindex="-1">Scenarios</button>
+      </div>
+      <section id="controls-panel" class="workspace-panel" role="tabpanel" aria-labelledby="tab-controls">
+        <h3>Local inputs</h3>
+        <div class="control-row"><div><label id="house1-label">House 1 switch</label><span id="request1" class="field-note">No demand</span></div><button id="house1-switch" class="switch" type="button" data-control aria-labelledby="house1-label" aria-pressed="false" disabled>Off</button></div>
+        <div class="control-row"><div><label id="house2-label">House 2 button</label><span id="request2" class="field-note">No demand</span></div><button id="house2-button" type="button" data-control disabled>Press</button></div>
+        <h3>Remote commands</h3>
+        <div class="control-row"><label>House 2 request</label><div class="button-pair"><button id="remote-on" type="button" data-control disabled>On</button><button id="remote-off" type="button" data-control disabled>Off</button></div></div>
+        <div class="control-row"><span>House 1 branch</span><button id="isolate1" class="quiet" type="button" data-control aria-pressed="false" disabled>Isolate</button></div>
+        <div class="control-row"><span>House 2 branch</span><button id="isolate2" class="quiet" type="button" data-control aria-pressed="false" disabled>Isolate</button></div>
+        <div class="control-row network-control"><div><span>Simulated cloud</span><span id="network-state" class="field-note">—</span></div><button id="network" type="button" class="quiet" data-control disabled>Disconnect</button></div>
+        <p class="acknowledgement field-note">Local controls remain available offline. Acknowledgement never restarts a pump.</p>
+      </section>
+      <section id="faults-panel" class="workspace-panel" role="tabpanel" aria-labelledby="tab-faults" hidden>
+        <h3>Inject a condition</h3>
+        <p class="panel-note">Injections change the plant. They are not diagnoses.</p>
+        <div id="fault-controls" class="fault-list">
+          <button type="button" data-control data-fault="main_leak" data-label="Main-line leak" aria-pressed="false" disabled><span>Main-line leak</span><span class="fault-action">Inject</span></button>
+          <button type="button" data-control data-fault="blockage1" data-label="House 1 blockage" aria-pressed="false" disabled><span>House 1 blockage</span><span class="fault-action">Inject</span></button>
+          <button type="button" data-control data-fault="blockage2" data-label="House 2 blockage" aria-pressed="false" disabled><span>House 2 blockage</span><span class="fault-action">Inject</span></button>
+          <button type="button" data-control data-fault="main_meter_stuck" data-label="Main meter stuck" aria-pressed="false" disabled><span>Main meter stuck</span><span class="fault-action">Inject</span></button>
+          <button type="button" data-control data-fault="tank1_wire_open" data-label="House 1 float wire open" aria-pressed="false" disabled><span>House 1 float wire open</span><span class="fault-action">Inject</span></button>
+          <button type="button" data-control data-fault="tank2_wire_open" data-label="House 2 float wire open" aria-pressed="false" disabled><span>House 2 float wire open</span><span class="fault-action">Inject</span></button>
+          <button type="button" data-control data-fault="source_wire_open" data-label="Source float wire open" aria-pressed="false" disabled><span>Source float wire open</span><span class="fault-action">Inject</span></button>
+          <button type="button" data-control data-fault="downstream_leak1" data-label="Leak after house 1 meter" aria-pressed="false" disabled><span>Leak after house 1 meter</span><span class="fault-action">Inject</span></button>
+        </div>
+        <h3>Water levels</h3>
+        <form id="tank1-form" class="level-control"><label for="tank1-input">House 1 tank</label><output id="tank1-input-draft" for="tank1-input">20.0%</output><input id="tank1-input" type="range" min="0" max="100" step="0.1" value="20" data-control><button type="submit" data-control disabled>Apply</button></form>
+        <form id="tank2-form" class="level-control"><label for="tank2-input">House 2 tank</label><output id="tank2-input-draft" for="tank2-input">20.0%</output><input id="tank2-input" type="range" min="0" max="100" step="0.1" value="20" data-control><button type="submit" data-control disabled>Apply</button></form>
+        <form id="source-form" class="level-control"><label for="source-input">Source reservoir</label><output id="source-input-draft" for="source-input">100.0%</output><input id="source-input" type="range" min="0" max="100" step="0.1" value="100" data-control><button type="submit" data-control disabled>Apply</button></form>
+      </section>
+      <section id="scenarios-panel" class="workspace-panel" role="tabpanel" aria-labelledby="tab-scenarios" hidden>
+        <h3>Run a scenario</h3>
+        <label for="scenario" class="sr-only">Scenario</label><select id="scenario"></select>
+        <p id="scenario-description" class="panel-note"></p>
+        <button id="run-scenario" class="primary" type="button" data-control disabled>Run scenario</button>
+        <p id="scenario-result" class="scenario-result" role="status">Ready to run.</p>
+        <ol id="scenario-steps"></ol>
+        <details class="scenario-timing"><summary>Advance by an exact interval</summary><form id="advance-form"><label for="advance-input">Virtual milliseconds</label><input id="advance-input" type="number" min="0" max="60000" step="1" value="1000" required data-control><button type="submit" data-control disabled>Advance</button></form></details>
+      </section>
+    </aside>
+  </div>
+
+  <section class="event-console" aria-labelledby="log-title">
+    <div class="console-toolbar">
+      <h2 id="log-title">Event log <span id="log-counts">—</span></h2>
+      <div class="log-filters"><label for="log-search" class="sr-only">Search events</label><input id="log-search" type="search" placeholder="Search events" autocomplete="off"><label for="log-level" class="sr-only">Filter by severity</label><select id="log-level"><option value="ALL">All severities</option><option value="INFO">Info</option><option value="WARN">Warnings</option><option value="ERROR">Errors</option></select></div>
+    </div>
+    <div class="log-scroll" tabindex="0" role="region" aria-label="Controller event log">
+      <table><thead><tr><th scope="col" class="numeric">Sequence</th><th scope="col" class="numeric">Time (ms)</th><th scope="col">Severity</th><th scope="col">Event</th><th scope="col">Subject</th><th scope="col" class="numeric">Value</th><th scope="col">Unit</th></tr></thead><tbody id="logs"></tbody></table>
+    </div>
+    <div class="console-footer"><span>Newest first <span class="retention">32-record retention</span></span><dl><div><dt>Overwritten</dt><dd id="log-overwritten">0</dd></div><div><dt>Suppressed</dt><dd id="log-suppressed">0</dd></div><div><dt>Rejected</dt><dd id="log-rejected">0</dd></div></dl></div>
+  </section>
+  <details class="model-notes"><summary>Model and safety limits</summary><div><p>This is software-in-the-loop simulation using the firmware's C++ controller. Tanks, flows, hydraulics and the 450 pulses/litre calibration are illustrative. Blue pipes, pump symbols and valve symbols show controller commands, not physical feedback. Delivery values are model truth, not installed sensors.</p><p>A full tank or open float wire removes permission. A leak after a branch meter can remain undetected. Low flow does not prove blockage. Simulation does not validate wiring, pressure, motor protection, valve travel, or real-world safety.</p><p>Only actions advance virtual time. Multiple tabs share one engine. The simulated cloud does not contact Blynk. Fault acknowledgement clears a latch without repairing the cause or restarting a pump.</p></div></details>
+</main>
+</body>
+</html>

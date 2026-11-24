@@ -1,0 +1,8 @@
+.build/
+.pio/
+__pycache__/
+*.pyc
+.venv/
+.env
+.env.*
+firmware/WaterDistribution/water_cloud_credentials.hpp

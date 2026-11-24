@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include "Hardware.h"
 #include <LiquidCrystal_I2C.h>
 #include <Wire.h>
 #include <driver/gpio.h>
@@ -10,7 +11,7 @@
 #include <cstring>
 #include <ctime>
 
-#include "water/controller.hpp"
+#include "src/water/controller.hpp"
 
 #ifndef WATER_ENABLE_CLOUD
 #define WATER_ENABLE_CLOUD 0
@@ -63,10 +64,16 @@ struct Counters {
     uint32_t startup_error = 0;
 };
 struct Telemetry {
+    Telemetry() = default;
+    Telemetry(const water::Snapshot& snapshot, uint32_t overwrites)
+        : state(snapshot), ring_overwrites(overwrites) {}
     water::Snapshot state{};
     uint32_t ring_overwrites = 0;
 };
 struct FaultNotice {
+    FaultNotice() = default;
+    FaultNotice(uint32_t timestamp, uint32_t faults, uint32_t newly_added)
+        : time_ms(timestamp), fault_mask(faults), newly_latched(newly_added) {}
     uint32_t time_ms = 0;
     uint32_t fault_mask = 0;
     uint32_t newly_latched = 0;
@@ -343,7 +350,7 @@ void ioTask(void*) {
                 const Counters copy = counters;
                 portEXIT_CRITICAL(&sharedMux);
                 const int count = snprintf(pending, sizeof(pending),
-                    "time_ms=%lu level=INFO code=ADAPTER_STATS command_drops=%lu stale_remote_commands=%lu "
+                    "t_ms=%lu level=INFO code=ADAPTER_STATS command_drops=%lu stale_remote_commands=%lu "
                     "log_queue_drops=%lu missed_ring_events=%lu ring_overwrites=%lu suppressed_logs=%lu "
                     "notification_drops=%lu format_failures=%lu serial_input_errors=%lu startup_error=%lu\n",
                     static_cast<unsigned long>(now), static_cast<unsigned long>(copy.command_drops),
@@ -462,7 +469,9 @@ void cloudTask(void*) {
 
 #if WATER_ENABLE_CLOUD
 BLYNK_CONNECTED() {
-    // Publish current physical/controller state. Never syncAll()/syncVirtual() commands.
+    // Authentication succeeded: authorize this session before its first command callback.
+    publishNetworkHealth(WiFi.status() == WL_CONNECTED);
+    // Publish current output commands; never synchronize historical commands.
     publishActualOnReconnect = true;
 }
 BLYNK_WRITE(V6) {
@@ -482,7 +491,7 @@ BLYNK_WRITE(V12) {
 }
 #endif
 
-void setup() {
+void water::hardware::begin() {
     initializePins();
     commandQueue = xQueueCreateStatic(16, sizeof(QueuedCommand), commandStorage, &commandQueueControl);
     logQueue = xQueueCreateStatic(64, sizeof(water::Event), logStorage, &logQueueControl);
@@ -511,6 +520,3 @@ void setup() {
 #endif
 }
 
-void loop() {
-    delay(1000);  // Safety, display/logging, and networking each have their own owner.
-}

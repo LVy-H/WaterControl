@@ -7,6 +7,40 @@ No hardware or Wokwi browser run is claimed here.
 
 ## Build and run
 
+### Arduino IDE
+
+The complete board project is `firmware/WaterDistribution/`.
+Copy that **whole folder**, not only the `.ino` text: Arduino compiles the hardware adapter and the `src/` controller module too.
+No simulator files, Python process, web server, or PlatformIO installation are required on the board.
+
+1. Install Arduino IDE 2.
+2. Add `https://espressif.github.io/arduino-esp32/package_esp32_index.json` to **Preferences → Additional Boards Manager URLs**.
+3. In Boards Manager, install **esp32 by Espressif Systems, version 2.0.17**.
+   This firmware targets its IDF 4.4 watchdog interface; do not silently substitute the 3.x board package.
+4. In Library Manager, install **LiquidCrystal I2C by Frank de Brabander, version 1.1.2**.
+5. Open `firmware/WaterDistribution/WaterDistribution.ino`; choose **Tools → Board → ESP32 Arduino → ESP32 Dev Module**.
+6. Press **Verify**. You can compile without a board. Select the actual USB port and **Upload** only when you have the ESP32.
+7. Open Serial Monitor at **115200 baud**. Send `ack` with a newline for a local safe fault acknowledgement.
+
+The sketch is for a classic ESP32-WROOM DevKit, not Uno, Nano, ESP32-C3, or ESP32-S3.
+Before enabling physical loads, set driver polarity and confirm the pin map in `Hardware.cpp`, and replace `Config::pulses_per_litre` in `src/water/controller.hpp` with separately measured coefficients.
+The 450 defaults are illustrative; they do not certify sensor calibration.
+The Arduino Library Manager's LCD 1.1.2 package advertises AVR-only metadata, so ESP32 builds emit an architecture warning.
+Compilation and physical LCD compatibility are separate checks; verify the display on the actual board.
+
+| File | Responsibility |
+| --- | --- |
+| `WaterDistribution.ino` | Arduino `setup()` / `loop()` entry points |
+| `Hardware.h` / `Hardware.cpp` | Real GPIO, ISR pulse capture, watchdog, ordered outputs, UART/LCD, optional cloud task |
+| `src/water/controller.hpp` / `src/controller.cpp` | Pure, allocation-free safety controller shared with the desktop simulator |
+| Repository `simulator/` | Desktop-only pulse/volume model, native protocol and web UI; never part of the sketch |
+
+Cloud mode is optional. To use it in Arduino IDE, install **Blynk 1.3.2**, set `WATER_ENABLE_CLOUD` to `1` in `Hardware.cpp`, and create the local sketch header `water_cloud_credentials.hpp` defining `BLYNK_TEMPLATE_ID`, `BLYNK_TEMPLATE_NAME`, `BLYNK_AUTH_TOKEN`, `WATER_WIFI_SSID`, and `WATER_WIFI_PASSWORD` with your own values.
+That header is ignored by Git; do not share a credential-bearing sketch or firmware image.
+The PlatformIO cloud build creates the same header privately from environment variables instead.
+
+### PlatformIO
+
 From the repository root, with PlatformIO Core 6 installed:
 
 ```sh
@@ -16,7 +50,7 @@ pio device monitor -b 115200
 
 The environment pins Espressif32 6.9.0, Arduino-ESP32 2.0.17 (PlatformIO package 3.20017.0), the ESP32 GCC 8.4.0 toolchain, and LCD 1.1.4.
 The cloud environment additionally pins Blynk 1.3.2.
-`platformio.ini` compiles **only** `src/controller.cpp` and `firmware/main.cpp`, with the shared `include/` directory.
+`platformio.ini` builds the same `firmware/WaterDistribution/` Arduino sketch, its hardware adapter, and its pure `src/` controller module.
 There is no firmware copy of the controller and no JavaScript safety implementation.
 The default environment needs no Wi-Fi, Blynk token, or network service.
 
@@ -89,7 +123,7 @@ The source float must be installed so that **adequate** source water closes its 
   Calibrate pulses/litre for each installed meter; the default 450 pulses/litre is illustrative, not a measured specification.
 - Never drive a motor, solenoid, relay coil, or high-current buzzer from a GPIO.
   Use appropriately rated transistor/MOSFET/isolated relay drivers, gate/base resistors as needed, and an external OFF-state bias that remains effective during reset and boot.
-  Active-LOW relay modules require changing the polarity constants in `firmware/main.cpp` and rechecking reset behavior; software initialization alone cannot suppress every boot transient.
+  Active-LOW relay modules require changing the polarity constants in `firmware/WaterDistribution/Hardware.cpp` and rechecking reset behavior; software initialization alone cannot suppress every boot transient.
 - Use separate correctly rated load supplies, fusing, motor protection, coil flyback suppression for DC loads, and appropriate snubbers/surge protection where required.
   Define grounding or galvanic isolation deliberately; do not defeat isolation by blindly joining grounds.
   Mains wiring requires qualified design and installation, not the LED diagram.
